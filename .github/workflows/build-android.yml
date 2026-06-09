@@ -54,7 +54,6 @@ jobs:
             -DANDROID_PLATFORM=android-23 \
             -DCMAKE_BUILD_TYPE=MinSizeRel \
             -DONNX_CUSTOM_PROTOC_EXECUTABLE=/opt/protoc/bin/protoc \
-            -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
             -DFETCHCONTENT_UPDATES_DISCONNECTED=ON \
             -Donnxruntime_MINIMAL_BUILD=ON \
             -Donnxruntime_BUILD_SHARED_LIB=ON \
@@ -89,15 +88,17 @@ jobs:
             -Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF \
             -S /tmp/onnxruntime/cmake \
             -B /tmp/build 2>&1 | tee /tmp/cmake-config.log
-          echo "=== TAIL OF CONFIG LOG (last 100 lines) ==="
-          tail -100 /tmp/cmake-config.log
+          echo "=== TAIL OF CONFIG LOG (last 80 lines) ==="
+          tail -80 /tmp/cmake-config.log
           echo "=== ERRORS (with context) ==="
           grep -B 2 -A 5 -i "error" /tmp/cmake-config.log | head -60
 
       - name: Build
         run: |
           cmake --build /tmp/build --config MinSizeRel --target onnxruntime --parallel $(nproc) 2>&1 | tee /tmp/build.log
-          echo "=== Build complete. Finding artifacts ==="
+          echo "=== TAIL OF BUILD LOG (last 50 lines) ==="
+          tail -50 /tmp/build.log
+          echo "=== Finding artifacts ==="
           find /tmp/build -name "libonnxruntime.so" -type f 2>/dev/null
 
       - name: Strip and collect

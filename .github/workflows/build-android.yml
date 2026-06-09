@@ -46,9 +46,8 @@ jobs:
         run: |
           git clone --depth 1 --branch v1.22.0 https://github.com/microsoft/onnxruntime.git /tmp/onnxruntime
 
-      - name: Configure CMake with full error capture
+      - name: Configure CMake
         run: |
-          set -x
           cmake -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_HOME }}/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=${{ matrix.abi }} \
@@ -90,13 +89,10 @@ jobs:
             -Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF \
             -S /tmp/onnxruntime/cmake \
             -B /tmp/build 2>&1 | tee /tmp/cmake-config.log
-          EXIT_CODE=${{?}}
-          echo "=== CMAKE EXIT CODE: $EXIT_CODE ==="
           echo "=== TAIL OF CONFIG LOG (last 100 lines) ==="
           tail -100 /tmp/cmake-config.log
           echo "=== ERRORS (with context) ==="
           grep -B 2 -A 5 -i "error" /tmp/cmake-config.log | head -60
-          exit $EXIT_CODE
 
       - name: Build
         run: |

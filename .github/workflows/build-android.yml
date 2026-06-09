@@ -97,6 +97,8 @@ jobs:
             -Donnxruntime_USE_PREINSTALLED_EIGEN=OFF \
             -Donnxruntime_ENABLE_LTO=ON \
             -Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF \
+            -DCMAKE_CXX_FLAGS="-Wno-shorten-64-to-32 -Wno-error=shorten-64-to-32" \
+            -DCMAKE_C_FLAGS="-Wno-shorten-64-to-32" \
             -S /tmp/onnxruntime/cmake \
             -B /tmp/build 2>&1 | tee /tmp/cmake-config.log
           echo "=== TAIL OF CONFIG LOG (last 60 lines) ==="

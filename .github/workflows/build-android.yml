@@ -19,13 +19,10 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq wget unzip ninja-build
-          
-          # Use absolute path /tmp for protoc
           sudo mkdir -p /opt/protoc
           sudo wget -q https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip -O /tmp/protoc.zip
           sudo unzip -q -o /tmp/protoc.zip -d /opt/protoc
           sudo chmod -R a+rx /opt/protoc
-          ls -la /opt/protoc/bin/
           /opt/protoc/bin/protoc --version
 
       - name: Install Android NDK
@@ -39,7 +36,6 @@ jobs:
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/26.3.11579264"
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          ls "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
 
       - name: Write ops config
         run: |
@@ -57,7 +53,12 @@ jobs:
             -DANDROID_ABI=${{ matrix.abi }} \
             -DANDROID_PLATFORM=android-23 \
             -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DCMAKE_PROJECT_VERSION_MAJOR=1 \
+            -DCMAKE_PROJECT_VERSION_MINOR=22 \
+            -DCMAKE_PROJECT_VERSION_PATCH=0 \
             -DONNX_CUSTOM_PROTOC_EXECUTABLE=/opt/protoc/bin/protoc \
+            -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
+            -DFETCHCONTENT_UPDATES_DISCONNECTED=ON \
             -Donnxruntime_MINIMAL_BUILD=ON \
             -Donnxruntime_BUILD_SHARED_LIB=ON \
             -Donnxruntime_BUILD_UNIT_TESTS=OFF \

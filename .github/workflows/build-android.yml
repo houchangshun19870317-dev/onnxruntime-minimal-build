@@ -19,6 +19,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq wget unzip ninja-build
+
+      - name: Install protoc
+        run: |
           sudo mkdir -p /opt/protoc
           sudo wget -q https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip -O /tmp/protoc.zip
           sudo unzip -q -o /tmp/protoc.zip -d /opt/protoc
@@ -46,6 +49,12 @@ jobs:
         run: |
           git clone --depth 1 --branch v1.22.0 https://github.com/microsoft/onnxruntime.git /tmp/onnxruntime
 
+      - name: Patch eigen3 fetch to skip hash check
+        run: |
+          # Remove URL_HASH from eigen3 declaration so CMake doesn't verify zip hash
+          sed -i 's|URL_HASH.*SHA1=.*||g' /tmp/onnxruntime/cmake/external/eigen.cmake
+          grep -A 3 "FetchContent_Declare" /tmp/onnxruntime/cmake/external/eigen.cmake | head -10
+
       - name: Configure CMake
         run: |
           cmake -G Ninja \
@@ -54,7 +63,7 @@ jobs:
             -DANDROID_PLATFORM=android-23 \
             -DCMAKE_BUILD_TYPE=MinSizeRel \
             -DONNX_CUSTOM_PROTOC_EXECUTABLE=/opt/protoc/bin/protoc \
-            -DFETCHCONTENT_UPDATES_DISCONNECTED=ON \
+            -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
             -Donnxruntime_MINIMAL_BUILD=ON \
             -Donnxruntime_BUILD_SHARED_LIB=ON \
             -Donnxruntime_BUILD_UNIT_TESTS=OFF \

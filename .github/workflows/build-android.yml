@@ -7,6 +7,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         abi: [arm64-v8a, armeabi-v7a]
 
@@ -14,21 +15,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Protoc
+      - name: Install protoc
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq wget unzip ninja-build
           wget -q https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip
           unzip -q protoc-21.12-linux-x86_64.zip -d /usr/local
           chmod +x /usr/local/bin/protoc
           protoc --version
 
       - name: Install Android NDK
-        uses: android-actions/setup-ndk@v3
-        with:
-          ndk-version: r26d
-
-      - name: Write Ops Config
         run: |
-          cat > /tmp/include_ops.config << 'OPS_EOF'
+          export ANDROID_HOME="${{ github.workspace }}/android-sdk"
+          mkdir -p "$ANDROID_HOME/ndk"
+          cd "$ANDROID_HOME/ndk"
+          wget -q https://dl.google.com/android/repository/android-ndk-r26d-linux.zip
+          unzip -q android-ndk-r26d-linux.zip
+          mv android-ndk-r26d 26.3.11579264
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/26.3.11579264"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          ls "$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+
+      - name: Write ops config
+        run: |
+          cat > /tmp/include_ops.config << OPS_EOF
 Add
 Cast
 Concat
@@ -63,8 +74,8 @@ OPS_EOF
 
       - name: Configure CMake
         run: |
-          cmake \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+          cmake -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_HOME }}/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=${{ matrix.abi }} \
             -DANDROID_PLATFORM=android-23 \
             -DCMAKE_BUILD_TYPE=MinSizeRel \
@@ -105,47 +116,17 @@ OPS_EOF
 
       - name: Build
         run: |
-          echo "Building ONNX Runtime for ${{ matrix.abi }}..."
           cmake --build /tmp/build --config MinSizeRel --parallel $(nproc)
-          echo "Build complete"
 
-      - name: Strip & Collect
+      - name: Strip and collect
         run: |
           mkdir -p /tmp/output/jni/${{ matrix.abi }}
           cp /tmp/build/libonnxruntime.so /tmp/output/jni/${{ matrix.abi }}/
-          $ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
-          echo "=== Final size for ${{ matrix.abi }} ==="
+          ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
           ls -lh /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
 
-      - name: Upload Artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: onnxruntime-minimal-${{ matrix.abi }}
           path: /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
-
-  combine:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download arm64-v8a
-        uses: actions/download-artifact@v4
-        with:
-          name: onnxruntime-minimal-arm64-v8a
-          path: /tmp/combined/jni/arm64-v8a/
-
-      - name: Download armeabi-v7a
-        uses: actions/download-artifact@v4
-        with:
-          name: onnxruntime-minimal-armeabi-v7a
-          path: /tmp/combined/jni/armeabi-v7a/
-
-      - name: List combined
-        run: |
-          ls -lh /tmp/combined/jni/*/libonnxruntime.so
-          echo "=== Done! ==="
-
-      - name: Upload Combined
-        uses: actions/upload-artifact@v4
-        with:
-          name: onnxruntime-minimal-combined
-          path: /tmp/combined/

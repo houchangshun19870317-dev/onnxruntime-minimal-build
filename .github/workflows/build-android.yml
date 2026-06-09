@@ -46,8 +46,9 @@ jobs:
         run: |
           git clone --depth 1 --branch v1.22.0 https://github.com/microsoft/onnxruntime.git /tmp/onnxruntime
 
-      - name: Configure CMake
+      - name: Configure CMake with full error capture
         run: |
+          set -x
           cmake -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_HOME }}/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=${{ matrix.abi }} \
@@ -88,19 +89,24 @@ jobs:
             -Donnxruntime_ENABLE_LTO=ON \
             -Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF \
             -S /tmp/onnxruntime/cmake \
-            -B /tmp/build
+            -B /tmp/build 2>&1 | tee /tmp/cmake-config.log
+          EXIT_CODE=${{?}}
+          echo "=== CMAKE EXIT CODE: $EXIT_CODE ==="
+          echo "=== TAIL OF CONFIG LOG (last 100 lines) ==="
+          tail -100 /tmp/cmake-config.log
+          echo "=== ERRORS (with context) ==="
+          grep -B 2 -A 5 -i "error" /tmp/cmake-config.log | head -60
+          exit $EXIT_CODE
 
       - name: Build
         run: |
-          cmake --build /tmp/build --config MinSizeRel --target onnxruntime --parallel $(nproc)
-          echo "=== Find the .so files ==="
+          cmake --build /tmp/build --config MinSizeRel --target onnxruntime --parallel $(nproc) 2>&1 | tee /tmp/build.log
+          echo "=== Build complete. Finding artifacts ==="
           find /tmp/build -name "libonnxruntime.so" -type f 2>/dev/null
-          find /tmp/build -name "*.so" -type f 2>/dev/null | head -20
 
       - name: Strip and collect
         run: |
           mkdir -p /tmp/output/jni/${{ matrix.abi }}
-          # Find the actual .so file
           SO_FILE=$(find /tmp/build -name "libonnxruntime.so" -type f | head -1)
           if [ -z "$SO_FILE" ]; then
             echo "ERROR: libonnxruntime.so not found!"

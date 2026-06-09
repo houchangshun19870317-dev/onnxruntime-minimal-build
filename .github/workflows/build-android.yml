@@ -18,7 +18,7 @@ jobs:
       - name: Setup environment
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq wget unzip ninja-build
+          sudo apt-get install -y -qq wget unzip ninja-build git
 
       - name: Install protoc
         run: |
@@ -49,11 +49,25 @@ jobs:
         run: |
           git clone --depth 1 --branch v1.22.0 https://github.com/microsoft/onnxruntime.git /tmp/onnxruntime
 
-      - name: Patch eigen3 fetch to skip hash check
+      - name: Patch eigen3 to use git repository
         run: |
-          # Remove URL_HASH from eigen3 declaration so CMake doesn't verify zip hash
-          sed -i 's|URL_HASH.*SHA1=.*||g' /tmp/onnxruntime/cmake/external/eigen.cmake
-          grep -A 3 "FetchContent_Declare" /tmp/onnxruntime/cmake/external/eigen.cmake | head -10
+          # Replace URL/URL_HASH fetch with GIT_REPOSITORY/GIT_TAG
+          cat > /tmp/onnxruntime/cmake/external/eigen.cmake << 'EOF'
+set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_BLAS OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_LAPACK OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
+set(EIGEN_BUILD_CMAKE_PACKAGE ON CACHE BOOL "" FORCE)
+
+onnxruntime_fetchcontent_declare(
+    Eigen3
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+    GIT_TAG 1d8b82b0740839c0de7f1242a3585e3390ff5f33
+    EXCLUDE_FROM_ALL
+)
+onnxruntime_fetchcontent_makeavailable(Eigen3)
+EOF
+          cat /tmp/onnxruntime/cmake/external/eigen.cmake
 
       - name: Configure CMake
         run: |
@@ -63,7 +77,7 @@ jobs:
             -DANDROID_PLATFORM=android-23 \
             -DCMAKE_BUILD_TYPE=MinSizeRel \
             -DONNX_CUSTOM_PROTOC_EXECUTABLE=/opt/protoc/bin/protoc \
-            -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
+            -DFETCHCONTENT_UPDATES_DISCONNECTED=ON \
             -Donnxruntime_MINIMAL_BUILD=ON \
             -Donnxruntime_BUILD_SHARED_LIB=ON \
             -Donnxruntime_BUILD_UNIT_TESTS=OFF \
@@ -97,10 +111,10 @@ jobs:
             -Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF \
             -S /tmp/onnxruntime/cmake \
             -B /tmp/build 2>&1 | tee /tmp/cmake-config.log
-          echo "=== TAIL OF CONFIG LOG (last 80 lines) ==="
-          tail -80 /tmp/cmake-config.log
+          echo "=== TAIL OF CONFIG LOG (last 60 lines) ==="
+          tail -60 /tmp/cmake-config.log
           echo "=== ERRORS (with context) ==="
-          grep -B 2 -A 5 -i "error" /tmp/cmake-config.log | head -60
+          grep -B 1 -A 4 -i "error" /tmp/cmake-config.log | head -50
 
       - name: Build
         run: |

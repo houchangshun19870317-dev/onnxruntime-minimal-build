@@ -88,24 +88,29 @@ jobs:
             -Donnxruntime_ENABLE_LTO=ON \
             -Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF \
             -S /tmp/onnxruntime/cmake \
-            -B /tmp/build 2>&1 | tee /tmp/cmake-config.log
-          
-          echo "=== TAIL OF CONFIG LOG ==="
-          tail -30 /tmp/cmake-config.log
-          echo "=== ERRORS ==="
-          grep -i "error" /tmp/cmake-config.log | head -20
+            -B /tmp/build
 
       - name: Build
         run: |
-          cmake --build /tmp/build --config MinSizeRel --parallel $(nproc) 2>&1 | tee /tmp/build.log
-          echo "=== TAIL OF BUILD LOG ==="
-          tail -30 /tmp/build.log
+          cmake --build /tmp/build --config MinSizeRel --target onnxruntime --parallel $(nproc)
+          echo "=== Find the .so files ==="
+          find /tmp/build -name "libonnxruntime.so" -type f 2>/dev/null
+          find /tmp/build -name "*.so" -type f 2>/dev/null | head -20
 
       - name: Strip and collect
         run: |
           mkdir -p /tmp/output/jni/${{ matrix.abi }}
-          cp /tmp/build/libonnxruntime.so /tmp/output/jni/${{ matrix.abi }}/
+          # Find the actual .so file
+          SO_FILE=$(find /tmp/build -name "libonnxruntime.so" -type f | head -1)
+          if [ -z "$SO_FILE" ]; then
+            echo "ERROR: libonnxruntime.so not found!"
+            find /tmp/build -name "*.so" -type f 2>/dev/null
+            exit 1
+          fi
+          echo "Found SO at: $SO_FILE"
+          cp "$SO_FILE" /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
           ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
+          echo "=== Final size ==="
           ls -lh /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
 
       - name: Upload

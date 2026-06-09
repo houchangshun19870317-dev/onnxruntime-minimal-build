@@ -46,7 +46,7 @@ jobs:
         run: |
           git clone --depth 1 --branch v1.22.0 https://github.com/microsoft/onnxruntime.git /tmp/onnxruntime
 
-      - name: Configure CMake with logging
+      - name: Configure CMake
         run: |
           cmake -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_HOME }}/build/cmake/android.toolchain.cmake \
@@ -89,7 +89,27 @@ jobs:
             -Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF \
             -S /tmp/onnxruntime/cmake \
             -B /tmp/build 2>&1 | tee /tmp/cmake-config.log
+          
           echo "=== TAIL OF CONFIG LOG ==="
           tail -30 /tmp/cmake-config.log
           echo "=== ERRORS ==="
-          grep -i "error" /tmp/cmake-config.log | head -10
+          grep -i "error" /tmp/cmake-config.log | head -20
+
+      - name: Build
+        run: |
+          cmake --build /tmp/build --config MinSizeRel --parallel $(nproc) 2>&1 | tee /tmp/build.log
+          echo "=== TAIL OF BUILD LOG ==="
+          tail -30 /tmp/build.log
+
+      - name: Strip and collect
+        run: |
+          mkdir -p /tmp/output/jni/${{ matrix.abi }}
+          cp /tmp/build/libonnxruntime.so /tmp/output/jni/${{ matrix.abi }}/
+          ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
+          ls -lh /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: onnxruntime-minimal-${{ matrix.abi }}
+          path: /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so

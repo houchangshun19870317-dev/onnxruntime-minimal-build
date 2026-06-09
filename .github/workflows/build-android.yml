@@ -20,9 +20,10 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq wget unzip ninja-build
           mkdir -p $HOME/protoc
+          cd $HOME/protoc
           wget -q https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip
-          unzip -q -o protoc-21.12-linux-x86_64.zip -d $HOME/protoc
-          echo "$HOME/protoc/bin" >> $GITHUB_PATH
+          unzip -q -o protoc-21.12-linux-x86_64.zip
+          ls -la $HOME/protoc/bin/
           $HOME/protoc/bin/protoc --version
 
       - name: Install Android NDK
@@ -48,13 +49,15 @@ jobs:
           git clone --depth 1 --branch v1.22.0 https://github.com/microsoft/onnxruntime.git /tmp/onnxruntime
 
       - name: Configure CMake
+        env:
+          PROTOC_PATH: ${{ github.workspace }}/protoc/bin/protoc
         run: |
           cmake -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_HOME }}/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=${{ matrix.abi }} \
             -DANDROID_PLATFORM=android-23 \
             -DCMAKE_BUILD_TYPE=MinSizeRel \
-            -DONNX_CUSTOM_PROTOC_EXECUTABLE=${{ github.workspace }}/protoc/bin/protoc \
+            -DONNX_CUSTOM_PROTOC_EXECUTABLE=${{ env.PROTOC_PATH }} \
             -Donnxruntime_MINIMAL_BUILD=ON \
             -Donnxruntime_BUILD_SHARED_LIB=ON \
             -Donnxruntime_BUILD_UNIT_TESTS=OFF \

@@ -30,7 +30,7 @@ jobs:
 
       - name: Install Android NDK
         run: |
-          export ANDROID_HOME="${{ github.workspace }}/android-sdk"
+          export ANDROID_HOME="${GITHUB_WORKSPACE}/android-sdk"
           mkdir -p "$ANDROID_HOME/ndk"
           cd "$ANDROID_HOME/ndk"
           wget -q https://dl.google.com/android/repository/android-ndk-r26d-linux.zip
@@ -42,38 +42,26 @@ jobs:
 
       - name: Write ops config
         run: |
-          echo "QWRkCkNhc3QKQ29uY2F0CkNvbnN0YW50T2ZTaGFwZQpDb252CkVxdWFsCkdhdGhlcgpJZGVudGl0eQpJZgpMU1RNCkxvZwpNdWwKTmVnClBhZApQb3cKUmVkdWNlTWVhbgpSZWx1ClJlc2hhcGUKU2hhcGUKU2lnbW9pZApTbGljZQpTcXJ0ClNxdWVlemUKVHJhbnNwb3NlClVuc3F1ZWV6ZQ==" | base64 -d > /tmp/include_ops.config
+          BASE64_OPS="QWRkCkNhc3QKQ29uY2F0CkNvbnN0YW50T2ZTaGFwZQpDb252CkVxdWFsCkdhdGhlcgpJZGVudGl0eQpJZgpMU1RNCkxvZwpNdWwKTmVnClBhZApQb3cKUmVkdWNlTWVhbgpSZWx1ClJlc2hhcGUKU2hhcGUKU2lnbW9pZApTbGljZQpTcXJ0ClNxdWVlemUKVHJhbnNwb3NlClVuc3F1ZWV6ZQ=="
+          echo "$BASE64_OPS" | base64 -d > /tmp/include_ops.config
           cat /tmp/include_ops.config
 
       - name: Clone ONNX Runtime
         run: |
           git clone --depth 1 --branch v1.22.0 https://github.com/microsoft/onnxruntime.git /tmp/onnxruntime
 
-      - name: Patch eigen3 to use git repository
+      - name: Patch eigen3 to use git
         run: |
-          # Replace URL/URL_HASH fetch with GIT_REPOSITORY/GIT_TAG
-          cat > /tmp/onnxruntime/cmake/external/eigen.cmake << 'EOF'
-set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
-set(EIGEN_BUILD_BLAS OFF CACHE BOOL "" FORCE)
-set(EIGEN_BUILD_LAPACK OFF CACHE BOOL "" FORCE)
-set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
-set(EIGEN_BUILD_CMAKE_PACKAGE ON CACHE BOOL "" FORCE)
-
-onnxruntime_fetchcontent_declare(
-    Eigen3
-    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-    GIT_TAG 1d8b82b0740839c0de7f1242a3585e3390ff5f33
-    EXCLUDE_FROM_ALL
-)
-onnxruntime_fetchcontent_makeavailable(Eigen3)
-EOF
-          cat /tmp/onnxruntime/cmake/external/eigen.cmake
+          EIGEN_FILE=/tmp/onnxruntime/cmake/external/eigen.cmake
+          sed -i 's|URL ${DEP_URL_eigen}|GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git|' "$EIGEN_FILE"
+          sed -i 's|URL_HASH SHA1=${DEP_SHA1_eigen}|GIT_TAG 1d8b82b0740839c0de7f1242a3585e3390ff5f33|' "$EIGEN_FILE"
+          cat "$EIGEN_FILE"
 
       - name: Configure CMake
         run: |
           cmake -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE=${{ env.ANDROID_NDK_HOME }}/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=${{ matrix.abi }} \
+            -DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${MATRIX_ABI} \
             -DANDROID_PLATFORM=android-23 \
             -DCMAKE_BUILD_TYPE=MinSizeRel \
             -DONNX_CUSTOM_PROTOC_EXECUTABLE=/opt/protoc/bin/protoc \
@@ -115,6 +103,8 @@ EOF
           tail -60 /tmp/cmake-config.log
           echo "=== ERRORS (with context) ==="
           grep -B 1 -A 4 -i "error" /tmp/cmake-config.log | head -50
+        env:
+          MATRIX_ABI: ${{ matrix.abi }}
 
       - name: Build
         run: |
@@ -135,7 +125,7 @@ EOF
           fi
           echo "Found SO at: $SO_FILE"
           cp "$SO_FILE" /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
-          ${{ env.ANDROID_NDK_HOME }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
+          ${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
           echo "=== Final size ==="
           ls -lh /tmp/output/jni/${{ matrix.abi }}/libonnxruntime.so
 

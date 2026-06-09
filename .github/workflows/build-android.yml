@@ -63,21 +63,55 @@ jobs:
           # core/providers/cpu/fp16/ depend on GetFusedActivationAttr from contrib_ops
           # (which is disabled). cpu_execution_provider.cc also references fp16 kernels
           # under the same macro. Disabling the macro removes both sides at once.
+          # Additionally, several MLAS fp16 *.cpp files use MlasLoad/StoreFloat16x8 (also
+          # gated by the macro via fp16_common.h) without their own guards, so we wrap
+          # their bodies in the macro to make them empty when fp16 is disabled.
           MLAS_H=/tmp/onnxruntime/onnxruntime/core/mlas/inc/mlas.h
           python3 - <<'PY'
           import pathlib
+
+          # 1) Disable the macro
           p = pathlib.Path("/tmp/onnxruntime/onnxruntime/core/mlas/inc/mlas.h")
           src = p.read_text()
           old = "#define MLAS_F16VEC_INTRINSICS_SUPPORTED"
           new = "// #define MLAS_F16VEC_INTRINSICS_SUPPORTED  // disabled for minimal build"
           if old in src and new not in src:
-              src = src.replace(old, new, 1)
-              p.write_text(src)
+              p.write_text(src.replace(old, new, 1))
               print("Patched: MLAS_F16VEC_INTRINSICS_SUPPORTED disabled")
           else:
-              print("Already patched or marker missing")
+              print("mlas.h already patched")
+
+          # 2) Wrap unguarded fp16 source files so their bodies vanish when the macro is off
+          mlas_lib = pathlib.Path("/tmp/onnxruntime/onnxruntime/core/mlas/lib")
+          targets = [
+              "hqnbitgemm_kernel_neon_fp16.cpp",
+              "rotary_embedding_kernel_neon_fp16.cpp",
+              "halfgemm_kernel_neon_fp16.cpp",
+              "softmax_kernel_neon_fp16.cpp",
+              "eltwise_kernel_neon_fp16.cpp",
+              "hgemm_kernel_neon.cpp",
+          ]
+          guard_open = "\n#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED  // wrap for minimal build\n"
+          guard_close = "\n#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED (minimal build wrap)\n"
+          for name in targets:
+              f = mlas_lib / name
+              text = f.read_text()
+              if "wrap for minimal build" in text:
+                  print(f"already wrapped: {name}")
+                  continue
+              # Insert guard after the last #include line, before the first real code
+              lines = text.split("\n")
+              insert_at = 0
+              for i, line in enumerate(lines):
+                  if line.startswith("#include"):
+                      insert_at = i + 1
+              new_text = "\n".join(lines[:insert_at]) + guard_open + "\n".join(lines[insert_at:]) + guard_close
+              f.write_text(new_text)
+              print(f"wrapped: {name}")
           PY
           grep -n "MLAS_F16VEC_INTRINSICS_SUPPORTED" "$MLAS_H" | head -5
+          echo "--- head of hqnbitgemm_kernel_neon_fp16.cpp ---"
+          head -25 /tmp/onnxruntime/onnxruntime/core/mlas/lib/hqnbitgemm_kernel_neon_fp16.cpp
 
       - name: Configure CMake
         run: |

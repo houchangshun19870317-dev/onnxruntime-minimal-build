@@ -57,30 +57,27 @@ jobs:
           sed -i 's|URL_HASH SHA1=${DEP_SHA1_eigen}|GIT_TAG 1d8b82b0740839c0de7f1242a3585e3390ff5f33|' "$EIGEN_FILE"
           cat "$EIGEN_FILE"
 
-      - name: Patch providers_cpu to exclude fp16 when contrib_ops disabled
+      - name: Patch mlas.h to disable fp16 intrinsics
         run: |
-          # fp16_conv.cc depends on GetFusedActivationAttr from contrib_ops, which is excluded
-          # when -Donnxruntime_DISABLE_CONTRIB_OPS=ON. The fp16 code is only built for arm64-v8a
-          # (gated by MLAS_F16VEC_INTRINSICS_SUPPORTED), so this only fails on v8a.
-          CPU_CMAKE=/tmp/onnxruntime/cmake/onnxruntime_providers_cpu.cmake
+          # MLAS_F16VEC_INTRINSICS_SUPPORTED is auto-defined for arm64. fp16 kernels in
+          # core/providers/cpu/fp16/ depend on GetFusedActivationAttr from contrib_ops
+          # (which is disabled). cpu_execution_provider.cc also references fp16 kernels
+          # under the same macro. Disabling the macro removes both sides at once.
+          MLAS_H=/tmp/onnxruntime/onnxruntime/core/mlas/inc/mlas.h
           python3 - <<'PY'
           import pathlib
-          p = pathlib.Path("/tmp/onnxruntime/cmake/onnxruntime_providers_cpu.cmake")
+          p = pathlib.Path("/tmp/onnxruntime/onnxruntime/core/mlas/inc/mlas.h")
           src = p.read_text()
-          marker = "if(onnxruntime_DISABLE_ML_OPS)"
-          inject = (
-              "if(onnxruntime_DISABLE_CONTRIB_OPS)\n"
-              "  list(FILTER onnxruntime_providers_srcs EXCLUDE REGEX \".*/fp16/.*\")\n"
-              "endif()\n\n"
-          )
-          if "DISABLE_CONTRIB_OPS" not in src.split(marker)[0]:
-              src = src.replace(marker, inject + marker, 1)
+          old = "#define MLAS_F16VEC_INTRINSICS_SUPPORTED"
+          new = "// #define MLAS_F16VEC_INTRINSICS_SUPPORTED  // disabled for minimal build"
+          if old in src and new not in src:
+              src = src.replace(old, new, 1)
               p.write_text(src)
-              print("Patched: fp16 excluded when DISABLE_CONTRIB_OPS")
+              print("Patched: MLAS_F16VEC_INTRINSICS_SUPPORTED disabled")
           else:
-              print("Already patched")
+              print("Already patched or marker missing")
           PY
-          head -25 "$CPU_CMAKE"
+          grep -n "MLAS_F16VEC_INTRINSICS_SUPPORTED" "$MLAS_H" | head -5
 
       - name: Configure CMake
         run: |

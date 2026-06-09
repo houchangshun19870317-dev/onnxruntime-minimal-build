@@ -108,6 +108,22 @@ jobs:
               new_text = "\n".join(lines[:insert_at]) + guard_open + "\n".join(lines[insert_at:]) + guard_close
               f.write_text(new_text)
               print(f"wrapped: {name}")
+
+          # 3) Guard platform.cpp line that references MlasHGemmDispatchNeon (defined in
+          #    the now-wrapped hgemm_kernel_neon.cpp)
+          plat = pathlib.Path("/tmp/onnxruntime/onnxruntime/core/mlas/lib/platform.cpp")
+          ptxt = plat.read_text()
+          old = "    this->HGemmDispatch = &MlasHGemmDispatchNeon;"
+          new = (
+              "#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED\n"
+              "    this->HGemmDispatch = &MlasHGemmDispatchNeon;\n"
+              "#endif"
+          )
+          if old in ptxt and "MLAS_F16VEC_INTRINSICS_SUPPORTED\n    this->HGemmDispatch" not in ptxt:
+              plat.write_text(ptxt.replace(old, new, 1))
+              print("guarded platform.cpp HGemmDispatch")
+          else:
+              print("platform.cpp HGemmDispatch already guarded or marker missing")
           PY
           grep -n "MLAS_F16VEC_INTRINSICS_SUPPORTED" "$MLAS_H" | head -5
           echo "--- head of hqnbitgemm_kernel_neon_fp16.cpp ---"
